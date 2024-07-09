@@ -32,7 +32,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 // Define to use SWO trace
-#define DEBUG_PRINT
+//#define DEBUG_PRINT
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,20 +42,59 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
 
-UART_HandleTypeDef huart2;
+SPI_HandleTypeDef hspi2;
+SPI_HandleTypeDef hspi3;
+
+TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
+uint32_t ambient_temp, oven_temp;	// Variables to store sensed temperatures
 
+enum states
+{
+	IDLE,
+	PREHEAT,
+	REFLOW,
+	COOLDOWN
+};
+
+enum states state = IDLE;
+
+// PID loop constants
+float k_p = 1.2;		// Proportional constant
+float k_i = 0.002;		// Integral constant
+float k_d = 0;			// Derivative constant
+uint8_t interval = 1;	// Interval in seconds
+int32_t integral;		// Integral term
+int32_t derivative;		// Derivative term
+int16_t error_prev;		// Required to compute derivative
+
+// System variables (All temperatures in ºC, times in seconds)
+uint8_t time_counter_enable;	// Start count: 1, stop count: 0
+uint16_t seconds_count;			// seconds counter, needed to control different reflow profile's phases
+uint8_t zero_crossing_count;	// Zero crossings counter, needed to control oven's output
+uint8_t oven_duty;				// Oven's "duty cycle": How many cycles will oven's element be enabled. Value between 0 and 100
+uint8_t soak_setpoint = 180;	// Set point temperature for soak phase
+uint8_t reflow_setpoint = 250;	// Set point temperature for reflow phase
+uint16_t soak_duration = 200;	// Soak phase duration
+uint16_t reflow_duration = 105;	// Reflow phase duration
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_ADC2_Init(void);
+static void MX_SPI2_Init(void);
+static void MX_SPI3_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t PID_Loop(uint16_t setpoint);
+void RGB_LED_Color(uint8_t color);
+void control_oven(int8_t oven_duty_cycle);
+void oven_task(uint16_t setpoint);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -92,8 +131,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
   MX_ADC1_Init();
+  MX_ADC2_Init();
+  MX_SPI2_Init();
+  MX_SPI3_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -102,11 +144,38 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_ADC_Start(&hadc1);
-#ifdef DEBUG_PRINT
-	  printf("Value: %lu\n", HAL_ADC_GetValue(&hadc1));
-#endif
-	  HAL_Delay(100);
+	  // State machine
+	  switch(state)
+	  {
+	  case IDLE:
+		  HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+		  seconds_count = 0;
+		  integral = 0;
+		  oven_task(0);
+		  RGB_LED_Color(RGB_LED_RED);	// Red color indicates oven is off
+		  break;
+	  case PREHEAT:
+		  oven_task(soak_setpoint);
+		  if (seconds_count > soak_duration)
+			  state++;
+		  RGB_LED_Color(RGB_LED_YELLOW);	// Yellow color indicates oven is in Preheat
+		  break;
+	  case REFLOW:
+		  oven_task(reflow_setpoint);
+		  if (seconds_count > soak_duration + reflow_duration)
+			  state++;
+		  RGB_LED_Color(RGB_LED_GREEN);	// Green color indicates oven is in Reflow
+		  break;
+	  case COOLDOWN:
+		  // Beep sound for 1 sec
+		  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+		  HAL_Delay(1000);
+		  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+		  state = IDLE;
+		  time_counter_enable = 0;
+		  break;
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -208,35 +277,205 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
+  * @brief ADC2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART2_UART_Init(void)
+static void MX_ADC2_Init(void)
 {
 
-  /* USER CODE BEGIN USART2_Init 0 */
+  /* USER CODE BEGIN ADC2_Init 0 */
 
-  /* USER CODE END USART2_Init 0 */
+  /* USER CODE END ADC2_Init 0 */
 
-  /* USER CODE BEGIN USART2_Init 1 */
+  ADC_ChannelConfTypeDef sConfig = {0};
 
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART2_Init 2 */
 
-  /* USER CODE END USART2_Init 2 */
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
+
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * @brief SPI3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI3_Init(void)
+{
+
+  /* USER CODE BEGIN SPI3_Init 0 */
+
+  /* USER CODE END SPI3_Init 0 */
+
+  /* USER CODE BEGIN SPI3_Init 1 */
+
+  /* USER CODE END SPI3_Init 1 */
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI3_Init 2 */
+
+  /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 16-1;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 210;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 105;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -252,26 +491,57 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, DISP_CS_Pin|DISP_T_CS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, DISP_RESET_Pin|DISP_DC_Pin|SD_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin|REG_LED_R_Pin|REG_LED_G_Pin|SSR_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : BTN1_Pin BTN2_Pin BTN3_Pin BTN4_Pin
+                           ZERO_CROSS_Pin */
+  GPIO_InitStruct.Pin = BTN1_Pin|BTN2_Pin|BTN3_Pin|BTN4_Pin
+                          |ZERO_CROSS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : DISP_CS_Pin DISP_T_CS_Pin */
+  GPIO_InitStruct.Pin = DISP_CS_Pin|DISP_T_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : DISP_RESET_Pin DISP_DC_Pin SD_CS_Pin */
+  GPIO_InitStruct.Pin = DISP_RESET_Pin|DISP_DC_Pin|SD_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : REG_LED_B_Pin REG_LED_R_Pin REG_LED_G_Pin SSR_Pin */
+  GPIO_InitStruct.Pin = REG_LED_B_Pin|REG_LED_R_Pin|REG_LED_G_Pin|SSR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 15);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -292,6 +562,171 @@ int _write(int file, char *ptr, int len)
   return len;
 }
 #endif
+
+/* RGB_LED_Color
+ * @brief: Displays a color on the on-board RGB-LED
+ *
+ * @param: color value, can be any value in @RGB_LED_COLORS
+ *
+ * @return: None
+ */
+void RGB_LED_Color(uint8_t color)
+{
+	switch (color)
+	{
+	case RGB_LED_OFF:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
+		break;
+	case RGB_LED_RED:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
+		break;
+	case RGB_LED_GREEN:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
+		break;
+	case RGB_LED_BLUE:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
+		break;
+	case RGB_LED_CYAN:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
+		break;
+	case RGB_LED_PURPLE:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
+		break;
+	case RGB_LED_YELLOW:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
+		break;
+	case RGB_LED_WHITE:
+		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
+		break;
+	}
+}
+
+uint8_t PID_Loop(uint16_t setpoint)
+{
+	int16_t error, output;
+
+	// Calculate the PID terms
+	error = setpoint - oven_temp;
+	integral = integral + (error * interval);
+	derivative = (error - error_prev) / interval;
+
+	output = (k_p * error) + (k_i * integral) + (k_d * derivative);
+
+	//printf("temp: %lu	error: %d	integral: %ld, deritavtive: %ld ", oven_temp, error, integral, derivative);
+
+	if (output > 100)
+		output = 100;
+	else if (output < 0)
+		output = 0;
+	//printf("output: %d\n", output);
+
+	// Save value for next iteration
+	error_prev = error;
+
+	return (uint8_t)output;
+}
+
+void control_oven(int8_t oven_duty_cycle)
+{
+	if (oven_duty_cycle > 0)
+	{
+		HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_SET);	// Turn on SSR
+	}
+	else
+	{
+		HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+	}
+	oven_duty = oven_duty_cycle;
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+	if (hadc->Instance == ADC1)
+	{
+		// Thermocouple Measurement complete
+		oven_temp = (0.0668*HAL_ADC_GetValue(hadc) -3) + ambient_temp;
+	}
+	else if (hadc->Instance == ADC2)
+	{
+		// Thermistor Measurement complete
+		ambient_temp = (uint32_t)(((42.57 / 4095) * HAL_ADC_GetValue(hadc)) + 8.708);
+#ifdef DEBUG_PRINT
+		//printf("Ambient Temperature %lu C\n", ambient_temp);
+#endif
+	}
+}
+
+void oven_task(uint16_t setpoint)
+{
+	  if (zero_crossing_count == oven_duty)
+	  {
+		  HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+	  }
+
+	  if (zero_crossing_count >= 99)
+	  {
+		  zero_crossing_count = 0;	// Reset counter
+		  if(time_counter_enable)
+		  {
+			  seconds_count++;		// Increase seconds counter
+		  }
+		  HAL_ADC_Start_IT(&hadc2); // Start a conversion on ADC1 (Thermistor)
+		  HAL_ADC_Start_IT(&hadc1); // Start a conversion on ADC2 (Thermocouple)
+
+#ifdef DEBUG_PRINT
+		  printf("%lu\n", oven_temp);
+#endif
+
+		  if (setpoint > 0)
+		  {
+			  control_oven(PID_Loop(setpoint)); // Regulate Oven's output
+		  }
+
+		  else
+		  {
+			  control_oven(0);
+		  }
+	  }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	// Zero cross detection interrupt
+	if (GPIO_Pin == ZERO_CROSS_Pin)
+	{
+		zero_crossing_count++;
+	}
+
+	// Start Button Detection Interrupt
+	else if (GPIO_Pin == BTN1_Pin)
+	{
+		state = PREHEAT;	// change state machine to pre-heat so reflow starts
+		time_counter_enable = 1;
+	}
+
+	// Stop Button Detection Interrupt
+	else if (GPIO_Pin == BTN2_Pin)
+	{
+		state = IDLE;
+		time_counter_enable = 0;
+	}
+}
 /* USER CODE END 4 */
 
 /**

@@ -30,3 +30,6 @@
 
 # CMake files/directories
 build/
+
+#SWVExport Directory
+SWV_export
