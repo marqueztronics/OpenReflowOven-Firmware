@@ -1,0 +1,5 @@
+../Drivers/lvgl/src/misc/lv_color.h:310:26:lv_color_make	1
+../Drivers/lvgl/src/misc/lv_color.h:447:26:lv_color_black	1
+../Drivers/lvgl/src/misc/lv_palette.c:35:12:lv_palette_main	2
+../Drivers/lvgl/src/misc/lv_palette.c:54:12:lv_palette_lighten	4
+../Drivers/lvgl/src/misc/lv_palette.c:93:12:lv_palette_darken	4

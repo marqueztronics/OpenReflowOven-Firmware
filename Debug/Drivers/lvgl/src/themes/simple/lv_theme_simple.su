@@ -1,0 +1,10 @@
+../Drivers/lvgl/src/themes/simple/../../../src/misc/../draw/../misc/lv_color.h:310:26:lv_color_make	24	static
+../Drivers/lvgl/src/themes/simple/../../../src/misc/../draw/../misc/lv_color.h:438:26:lv_color_white	16	static
+../Drivers/lvgl/src/themes/simple/../../../src/core/../misc/lv_style.h:597:20:lv_style_set_pad_all	16	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:76:13:style_init	88	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:144:6:lv_theme_simple_is_inited	16	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:151:14:lv_theme_simple_get	8	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:160:6:lv_theme_simple_deinit	24	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:176:14:lv_theme_simple_init	32	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:204:13:theme_apply	24	static
+../Drivers/lvgl/src/themes/simple/lv_theme_simple.c:427:13:style_init_reset	16	static

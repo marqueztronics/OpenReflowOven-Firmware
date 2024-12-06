@@ -1,0 +1,15 @@
+../Drivers/lvgl/src/misc/lv_color.h:310:26:lv_color_make	1
+../Drivers/lvgl/src/misc/lv_color.h:438:26:lv_color_white	1
+../Drivers/lvgl/src/misc/lv_color.h:447:26:lv_color_black	1
+../Drivers/lvgl/src/misc/lv_color_op.h:49:48:lv_color_mix	1
+../Drivers/lvgl/src/misc/lv_color.c:44:9:lv_color_format_get_bpp	8
+../Drivers/lvgl/src/misc/lv_color.c:79:6:lv_color_format_has_alpha	3
+../Drivers/lvgl/src/misc/lv_color.c:99:14:lv_color_to_32	1
+../Drivers/lvgl/src/misc/lv_color.c:109:10:lv_color_to_u16	1
+../Drivers/lvgl/src/misc/lv_color.c:114:10:lv_color_to_u32	1
+../Drivers/lvgl/src/misc/lv_color.c:119:12:lv_color_lighten	1
+../Drivers/lvgl/src/misc/lv_color.c:125:12:lv_color_darken	1
+../Drivers/lvgl/src/misc/lv_color.c:130:12:lv_color_hsv_to_rgb	7
+../Drivers/lvgl/src/misc/lv_color.c:188:16:lv_color_rgb_to_hsv	10
+../Drivers/lvgl/src/misc/lv_color.c:239:16:lv_color_to_hsv	1
+../Drivers/lvgl/src/misc/lv_color.c:260:19:lv_color_filter_shade_cb	3

@@ -1,0 +1,14 @@
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:132:23:lv_area_get_width	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:142:23:lv_area_get_height	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_color.h:236:23:lv_color_format_get_size	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_color.h:284:20:lv_color32_eq	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_color.h:371:46:lv_color_16_16_mix	4
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_color_op.h:67:28:lv_color_mix32	3
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:100:6:lv_draw_sw_transform	23
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:295:13:transform_rgb888	23
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:395:13:transform_argb8888	25
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:488:13:transform_rgb565a8	28
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:603:13:transform_a8	23
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:684:13:transform_l8_to_al88	23
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:765:13:transform_l8_to_argb8888	23
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_transform.c:844:13:transform_point_upscaled	7

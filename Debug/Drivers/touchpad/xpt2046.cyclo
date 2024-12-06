@@ -1,0 +1,4 @@
+../Drivers/touchpad/xpt2046.c:77:13:XPT2046_TouchSelect	1
+../Drivers/touchpad/xpt2046.c:82:13:XPT2046_TouchUnselect	1
+../Drivers/touchpad/xpt2046.c:87:6:XPT2046_TouchPressed	1
+../Drivers/touchpad/xpt2046.c:92:6:XPT2046_TouchGetCoordinates	8

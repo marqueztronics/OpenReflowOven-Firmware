@@ -1,0 +1,13 @@
+../Drivers/lvgl/src/themes/mono/../../../src/misc/../draw/../misc/lv_color.h:310:26:lv_color_make	1
+../Drivers/lvgl/src/themes/mono/../../../src/misc/../draw/../misc/lv_color.h:438:26:lv_color_white	1
+../Drivers/lvgl/src/themes/mono/../../../src/misc/../draw/../misc/lv_color.h:447:26:lv_color_black	1
+../Drivers/lvgl/src/themes/mono/../../../src/core/../misc/lv_style.h:591:20:lv_style_set_size	1
+../Drivers/lvgl/src/themes/mono/../../../src/core/../misc/lv_style.h:597:20:lv_style_set_pad_all	1
+../Drivers/lvgl/src/themes/mono/../../../src/core/../misc/lv_style.h:617:20:lv_style_set_pad_gap	1
+../Drivers/lvgl/src/themes/mono/../../../src/core/../display/lv_display.h:602:23:lv_display_dpx	3
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:85:13:style_init	18
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:182:6:lv_theme_mono_is_inited	2
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:189:6:lv_theme_mono_deinit	4
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:205:14:lv_theme_mono_init	4
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:231:13:theme_apply	9
+../Drivers/lvgl/src/themes/mono/lv_theme_mono.c:521:13:style_init_reset	2

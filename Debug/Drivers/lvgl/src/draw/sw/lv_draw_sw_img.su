@@ -1,0 +1,8 @@
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:119:20:lv_area_copy	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:132:23:lv_area_get_width	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:142:23:lv_area_get_height	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/../stdlib/lv_string.h:73:20:lv_memzero	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_color.h:236:23:lv_color_format_get_size	16	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_img.c:70:6:lv_draw_sw_layer	136	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_img.c:160:6:lv_draw_sw_image	24	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_img.c:175:13:img_draw_core	424	static

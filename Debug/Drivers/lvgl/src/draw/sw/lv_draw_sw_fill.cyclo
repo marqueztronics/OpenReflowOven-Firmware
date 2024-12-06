@@ -1,0 +1,4 @@
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:119:20:lv_area_copy	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:132:23:lv_area_get_width	1
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:142:23:lv_area_get_height	1
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_fill.c:45:6:lv_draw_sw_fill	45

@@ -1,0 +1,3 @@
+../Drivers/lvgl/src/draw/sw/blend/../../../misc/../font/../draw/../misc/lv_area.h:132:23:lv_area_get_width	16	static
+../Drivers/lvgl/src/draw/sw/blend/../../../misc/../font/../draw/../misc/lv_area.h:142:23:lv_area_get_height	16	static
+../Drivers/lvgl/src/draw/sw/blend/lv_draw_sw_blend.c:53:6:lv_draw_sw_blend	128	static

@@ -1,0 +1,3 @@
+../Drivers/lvgl/examples/widgets/calendar/../../../src/core/../display/lv_display.h:394:26:lv_screen_active	1
+../Drivers/lvgl/examples/widgets/calendar/../../../src/core/lv_obj_pos.h:198:20:lv_obj_center	1
+../Drivers/lvgl/examples/widgets/calendar/lv_example_calendar_2.c:25:6:lv_example_calendar_2	1

@@ -1,0 +1,11 @@
+../Drivers/lvgl/src/font/lv_binfont_loader.c:79:13:lv_binfont_create	40	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:116:6:lv_binfont_destroy	40	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:160:23:init_bit_iterator	24	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:169:21:read_bits	32	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:191:12:read_bits_signed	32	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:200:12:read_label	32	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:217:13:load_cmaps_tables	56	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:284:16:load_cmaps	48	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:313:16:load_glyph	104	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:458:13:lvgl_load_font	128	static
+../Drivers/lvgl/src/font/lv_binfont_loader.c:563:9:load_kern	80	static

@@ -22,6 +22,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "../../Drivers/tft/ili9341.h"
+#include "../../Drivers/touchpad/xpt2046.h"
+#include "../../Drivers/lvgl/lvgl.h"
+#include "reflow_oven_gui.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,6 +37,12 @@
 /* USER CODE BEGIN PD */
 // Define to use SWO trace
 //#define DEBUG_PRINT
+#define DISPLAY_WIDTH 320
+#define DISPLAY_HEIGHT 240
+#define WIDTH (DISPLAY_WIDTH)
+#define HEIGHT (DISPLAY_HEIGHT)
+#define BYTE_PER_PIXEL (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565)) /*will be 2 for RGB565 */
+#define BUFF_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT / 10 * BYTE_PER_PIXEL)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +54,7 @@
 ADC_HandleTypeDef hadc1;
 ADC_HandleTypeDef hadc2;
 
+SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 
@@ -52,20 +63,17 @@ TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN PV */
 uint32_t ambient_temp, oven_temp;	// Variables to store sensed temperatures
 
-enum states
-{
-	IDLE,
-	PREHEAT,
-	REFLOW,
-	COOLDOWN
-};
+
 
 enum states state = IDLE;
 
 // PID loop constants
-float k_p = 1.2;		// Proportional constant
-float k_i = 0.002;		// Integral constant
-float k_d = 0;			// Derivative constant
+float k_p_preheat = 0.85;		// Proportional constant
+float k_i_preheat = 0.001;		// Integral constant
+float k_d_preheat = 0;			// Derivative constant
+float k_p_reflow = 2.25;		// Proportional constant
+float k_i_reflow = 0;			// Integral constant
+float k_d_reflow = 0;			// Derivative constant
 uint8_t interval = 1;	// Interval in seconds
 int32_t integral;		// Integral term
 int32_t derivative;		// Derivative term
@@ -79,7 +87,16 @@ uint8_t oven_duty;				// Oven's "duty cycle": How many cycles will oven's elemen
 uint8_t soak_setpoint = 180;	// Set point temperature for soak phase
 uint8_t reflow_setpoint = 250;	// Set point temperature for reflow phase
 uint16_t soak_duration = 200;	// Soak phase duration
-uint16_t reflow_duration = 105;	// Reflow phase duration
+uint16_t reflow_duration = 115;	// Reflow phase duration
+
+// Buffers for LVGL
+static uint8_t buf_1[BUFF_SIZE];
+static uint8_t buf_2[BUFF_SIZE];
+
+// Extern LVGL objects
+extern lv_obj_t* phase_label;
+extern lv_obj_t* temp_label;
+extern lv_obj_t* time_label;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -90,11 +107,14 @@ static void MX_ADC2_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-uint8_t PID_Loop(uint16_t setpoint);
+uint8_t PID_Loop(uint16_t setpoint, float k_p, float k_i, float k_d);
 void RGB_LED_Color(uint8_t color);
 void control_oven(int8_t oven_duty_cycle);
 void oven_task(uint16_t setpoint);
+void my_flush_cb(lv_display_t * display, const lv_area_t * area, uint8_t * px_map);
+void my_touchpad_read(lv_indev_t * indev_drv, lv_indev_data_t * data);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,43 +156,68 @@ int main(void)
   MX_SPI2_Init();
   MX_SPI3_Init();
   MX_TIM1_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
+  // Initialize ILI9341 driver
+  ILI9341_Init();
+  ILI9341_Set_Rotation(SCREEN_HORIZONTAL_2);
+
+  //Initialise LVGL UI library
+  lv_init();
+
+  lv_display_t * disp = lv_display_create(HEIGHT, WIDTH); /*Basic initialization with horizontal and vertical resolution in pixels*/
+  lv_display_set_flush_cb(disp, my_flush_cb); /*Set a flush callback to draw to the display*/
+  lv_display_set_buffers(disp, buf_1, buf_2, sizeof(buf_1), LV_DISPLAY_RENDER_MODE_PARTIAL); /*Set an initialized buffer*/
+
+  lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+
+  lv_indev_t * indev = lv_indev_create();           /*Create an input device*/
+  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);  /*Touch pad is a pointer-like device*/
+  lv_indev_set_read_cb(indev, my_touchpad_read);    /*Set your driver function*/
+
+  reflow_oven_ui();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  lv_timer_handler();
+
 	  // State machine
 	  switch(state)
 	  {
 	  case IDLE:
-		  HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+		  HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
 		  seconds_count = 0;
 		  integral = 0;
 		  oven_task(0);
-		  RGB_LED_Color(RGB_LED_RED);	// Red color indicates oven is off
 		  break;
 	  case PREHEAT:
+		  time_counter_enable = 1;
 		  oven_task(soak_setpoint);
 		  if (seconds_count > soak_duration)
 			  state++;
-		  RGB_LED_Color(RGB_LED_YELLOW);	// Yellow color indicates oven is in Preheat
 		  break;
 	  case REFLOW:
+		  lv_label_set_text(phase_label, "Phase: REFLOW");
 		  oven_task(reflow_setpoint);
 		  if (seconds_count > soak_duration + reflow_duration)
 			  state++;
-		  RGB_LED_Color(RGB_LED_GREEN);	// Green color indicates oven is in Reflow
 		  break;
 	  case COOLDOWN:
-		  // Beep sound for 1 sec
-		  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-		  HAL_Delay(1000);
-		  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-		  state = IDLE;
-		  time_counter_enable = 0;
+		  lv_label_set_text(phase_label, "Phase: COOLDOWN");
+		  if (oven_temp <= 50)
+		  {
+			  // Beep sound for 1 sec
+			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+			  HAL_Delay(1000);
+			  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+			  state = IDLE;
+			  time_counter_enable = 0;
+		  }
+		  oven_task(0);
 		  break;
 	  }
 
@@ -195,7 +240,7 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -203,8 +248,21 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 180;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLR = 2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Activate the Over-Drive mode
+  */
+  if (HAL_PWREx_EnableOverDrive() != HAL_OK)
   {
     Error_Handler();
   }
@@ -213,12 +271,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
   {
     Error_Handler();
   }
@@ -245,7 +303,7 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
@@ -297,7 +355,7 @@ static void MX_ADC2_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc2.Instance = ADC2;
-  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.ScanConvMode = DISABLE;
   hadc2.Init.ContinuousConvMode = DISABLE;
@@ -325,6 +383,44 @@ static void MX_ADC2_Init(void)
   /* USER CODE BEGIN ADC2_Init 2 */
 
   /* USER CODE END ADC2_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -389,7 +485,7 @@ static void MX_SPI3_Init(void)
   hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi3.Init.NSS = SPI_NSS_SOFT;
-  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
   hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -496,21 +592,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, DISP_CS_Pin|DISP_T_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DISP_RESET_Pin|DISP_DC_Pin|SD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DISP_RESET_Pin|DISP_DC_Pin|SSR_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin|REG_LED_R_Pin|REG_LED_G_Pin|SSR_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pins : BTN1_Pin BTN2_Pin BTN3_Pin BTN4_Pin
-                           ZERO_CROSS_Pin */
-  GPIO_InitStruct.Pin = BTN1_Pin|BTN2_Pin|BTN3_Pin|BTN4_Pin
-                          |ZERO_CROSS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  /*Configure GPIO pin : SD_CS_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : DISP_CS_Pin DISP_T_CS_Pin */
   GPIO_InitStruct.Pin = DISP_CS_Pin|DISP_T_CS_Pin;
@@ -519,29 +614,28 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : DISP_RESET_Pin DISP_DC_Pin SD_CS_Pin */
-  GPIO_InitStruct.Pin = DISP_RESET_Pin|DISP_DC_Pin|SD_CS_Pin;
+  /*Configure GPIO pins : DISP_RESET_Pin DISP_DC_Pin SSR_Pin */
+  GPIO_InitStruct.Pin = DISP_RESET_Pin|DISP_DC_Pin|SSR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : REG_LED_B_Pin REG_LED_R_Pin REG_LED_G_Pin SSR_Pin */
-  GPIO_InitStruct.Pin = REG_LED_B_Pin|REG_LED_R_Pin|REG_LED_G_Pin|SSR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pin : DISP_T_IRQ_Pin */
+  GPIO_InitStruct.Pin = DISP_T_IRQ_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(DISP_T_IRQ_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ZERO_CROSS_Pin */
+  GPIO_InitStruct.Pin = ZERO_CROSS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(ZERO_CROSS_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 15);
-  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -570,54 +664,8 @@ int _write(int file, char *ptr, int len)
  *
  * @return: None
  */
-void RGB_LED_Color(uint8_t color)
-{
-	switch (color)
-	{
-	case RGB_LED_OFF:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
-		break;
-	case RGB_LED_RED:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
-		break;
-	case RGB_LED_GREEN:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
-		break;
-	case RGB_LED_BLUE:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
-		break;
-	case RGB_LED_CYAN:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
-		break;
-	case RGB_LED_PURPLE:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
-		break;
-	case RGB_LED_YELLOW:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_RESET);
-		break;
-	case RGB_LED_WHITE:
-		HAL_GPIO_WritePin(GPIOA, REG_LED_R_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_G_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOA, REG_LED_B_Pin, GPIO_PIN_SET);
-		break;
-	}
-}
 
-uint8_t PID_Loop(uint16_t setpoint)
+uint8_t PID_Loop(uint16_t setpoint, float k_p, float k_i, float k_d)
 {
 	int16_t error, output;
 
@@ -646,11 +694,11 @@ void control_oven(int8_t oven_duty_cycle)
 {
 	if (oven_duty_cycle > 0)
 	{
-		HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_SET);	// Turn on SSR
+		HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_SET);	// Turn on SSR
 	}
 	else
 	{
-		HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+		HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
 	}
 	oven_duty = oven_duty_cycle;
 }
@@ -660,23 +708,24 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 	if (hadc->Instance == ADC1)
 	{
 		// Thermocouple Measurement complete
-		oven_temp = (0.0668*HAL_ADC_GetValue(hadc) -3) + ambient_temp;
+		oven_temp = (0.069*HAL_ADC_GetValue(hadc) - 5.168) + ambient_temp;
+
+#ifdef DEBUG_PRINT
+		printf("Oven Temp ADC Val: %lu C\n", HAL_ADC_GetValue(hadc));
+#endif
 	}
 	else if (hadc->Instance == ADC2)
 	{
 		// Thermistor Measurement complete
-		ambient_temp = (uint32_t)(((42.57 / 4095) * HAL_ADC_GetValue(hadc)) + 8.708);
-#ifdef DEBUG_PRINT
-		//printf("Ambient Temperature %lu C\n", ambient_temp);
-#endif
+		ambient_temp = (0.017*HAL_ADC_GetValue(hadc) - 15.057);
 	}
 }
 
 void oven_task(uint16_t setpoint)
 {
-	  if (zero_crossing_count == oven_duty)
+	  if (zero_crossing_count >= oven_duty)
 	  {
-		  HAL_GPIO_WritePin(GPIOA, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
+		  HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
 	  }
 
 	  if (zero_crossing_count >= 99)
@@ -685,9 +734,15 @@ void oven_task(uint16_t setpoint)
 		  if(time_counter_enable)
 		  {
 			  seconds_count++;		// Increase seconds counter
+			  lv_label_set_text_fmt(time_label, "%d s", seconds_count);
 		  }
 		  HAL_ADC_Start_IT(&hadc2); // Start a conversion on ADC1 (Thermistor)
 		  HAL_ADC_Start_IT(&hadc1); // Start a conversion on ADC2 (Thermocouple)
+
+		  if (state != IDLE)
+			  update_chart(seconds_count, oven_temp);
+
+		  lv_label_set_text_fmt(temp_label, "%lu C", oven_temp);
 
 #ifdef DEBUG_PRINT
 		  printf("%lu\n", oven_temp);
@@ -695,7 +750,11 @@ void oven_task(uint16_t setpoint)
 
 		  if (setpoint > 0)
 		  {
-			  control_oven(PID_Loop(setpoint)); // Regulate Oven's output
+			  if (state == PREHEAT)
+				  control_oven(PID_Loop(setpoint, k_p_preheat, k_i_preheat, k_d_preheat)); // Regulate Oven's output
+
+			  else
+				  control_oven(PID_Loop(setpoint, k_p_reflow, k_i_reflow, k_d_reflow)); // Regulate Oven's output
 		  }
 
 		  else
@@ -705,26 +764,37 @@ void oven_task(uint16_t setpoint)
 	  }
 }
 
+void my_flush_cb(lv_display_t * display, const lv_area_t * area, uint8_t * px_map)
+{
+    /*The most simple case (but also the slowest) to put all pixels to the screen one-by-one
+     *`put_px` is just an example, it needs to be implemented by you.*/
+    uint16_t * buf16 = (uint16_t *)px_map; /*Let's say it's a 16 bit (RGB565) display*/
+    uint16_t width = (area->x2 - area->x1) + 1;
+    uint16_t height = (area->y2 - area->y1) + 1;
+    ILI9341_Draw_Bitmap(area->x1, area->y1, width, height, buf16);
+
+    /* IMPORTANT!!!
+     * Inform LVGL that you are ready with the flushing and buf is not used anymore*/
+    lv_display_flush_ready(display);
+}
+
+void my_touchpad_read(lv_indev_t * indev_drv, lv_indev_data_t * data)
+{
+    /*`touchpad_is_pressed` and `touchpad_get_xy` needs to be implemented by you*/
+    if(XPT2046_TouchPressed()) {
+      data->state = LV_INDEV_STATE_PRESSED;
+      XPT2046_TouchGetCoordinates((uint16_t*)&data->point.x, (uint16_t*)&data->point.y);
+    } else {
+      data->state = LV_INDEV_STATE_RELEASED;
+    }
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	// Zero cross detection interrupt
 	if (GPIO_Pin == ZERO_CROSS_Pin)
 	{
 		zero_crossing_count++;
-	}
-
-	// Start Button Detection Interrupt
-	else if (GPIO_Pin == BTN1_Pin)
-	{
-		state = PREHEAT;	// change state machine to pre-heat so reflow starts
-		time_counter_enable = 1;
-	}
-
-	// Stop Button Detection Interrupt
-	else if (GPIO_Pin == BTN2_Pin)
-	{
-		state = IDLE;
-		time_counter_enable = 0;
 	}
 }
 /* USER CODE END 4 */

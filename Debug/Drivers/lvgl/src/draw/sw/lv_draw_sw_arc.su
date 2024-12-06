@@ -1,0 +1,8 @@
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_math.h:56:45:lv_trigo_cos	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:119:20:lv_area_copy	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:132:23:lv_area_get_width	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/lv_area.h:142:23:lv_area_get_height	16	static
+../Drivers/lvgl/src/draw/sw/../../misc/../font/../draw/../misc/../stdlib/lv_string.h:73:20:lv_memzero	16	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_arc.c:49:6:lv_draw_sw_arc	624	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_arc.c:245:13:add_circle	64	static
+../Drivers/lvgl/src/draw/sw/lv_draw_sw_arc.c:265:13:get_rounded_area	48	static
