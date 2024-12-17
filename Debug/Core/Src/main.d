@@ -30,6 +30,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
+ ../FATFS/App/fatfs.h ../Middlewares/Third_Party/FatFs/src/ff.h \
+ ../Middlewares/Third_Party/FatFs/src/integer.h ../FATFS/Target/ffconf.h \
+ ../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h \
+ ../Middlewares/Third_Party/FatFs/src/diskio.h \
+ ../Middlewares/Third_Party/FatFs/src/ff.h ../FATFS/Target/user_diskio.h \
  ../Core/Src/../../Drivers/tft/ili9341.h \
  ../Core/Src/../../Drivers/touchpad/xpt2046.h \
  ../Core/Src/../../Drivers/lvgl/lvgl.h \
@@ -422,7 +427,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Src/../../Drivers/lvgl/src/core/../tick/lv_tick.h \
  ../Core/Src/../../Drivers/lvgl/src/core/../layouts/lv_layout.h \
  ../Core/Inc/reflow_oven_gui.h ../Core/Inc/main.h \
- ../Core/Inc/../../Drivers/lvgl/lvgl.h
+ ../Core/Inc/../../Drivers/lvgl/lvgl.h \
+ C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson.h \
+ C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson_opt.h \
+ C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson_opts.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -455,6 +463,14 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
+../FATFS/App/fatfs.h:
+../Middlewares/Third_Party/FatFs/src/ff.h:
+../Middlewares/Third_Party/FatFs/src/integer.h:
+../FATFS/Target/ffconf.h:
+../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h:
+../Middlewares/Third_Party/FatFs/src/diskio.h:
+../Middlewares/Third_Party/FatFs/src/ff.h:
+../FATFS/Target/user_diskio.h:
 ../Core/Src/../../Drivers/tft/ili9341.h:
 ../Core/Src/../../Drivers/touchpad/xpt2046.h:
 ../Core/Src/../../Drivers/lvgl/lvgl.h:
@@ -849,3 +865,6 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/reflow_oven_gui.h:
 ../Core/Inc/main.h:
 ../Core/Inc/../../Drivers/lvgl/lvgl.h:
+C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson.h:
+C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson_opt.h:
+C:/Users/leona/Documents/Marqueztronics/Projects/Reflow\ Oven/Firmware/Reflow-Oven-STM32/lwjson/src/include/lwjson/lwjson_opts.h:

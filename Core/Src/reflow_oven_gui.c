@@ -15,6 +15,7 @@ lv_obj_t* chart;
 lv_obj_t* phase_label;
 lv_obj_t* temp_label;
 lv_obj_t* time_label;
+lv_obj_t* profile_label;
 
 LV_IMAGE_DECLARE(OpenReflowOven_Logo_Small);
 LV_IMAGE_DECLARE(qrcode_url_hardware);
@@ -90,7 +91,7 @@ void reflow_oven_ui(void)
     /**** Screen Reflow ****/
 
     /* Reflow Profile label */
-    lv_obj_t* profile_label = lv_label_create(screen_reflow);
+    profile_label = lv_label_create(screen_reflow);
     lv_label_set_text(profile_label, "Reflow Profile Name");
     lv_obj_align(profile_label, LV_ALIGN_TOP_LEFT, 10, 10);
 

@@ -18,14 +18,17 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
 #include "../../Drivers/tft/ili9341.h"
 #include "../../Drivers/touchpad/xpt2046.h"
 #include "../../Drivers/lvgl/lvgl.h"
 #include "reflow_oven_gui.h"
+#include "lwjson/lwjson.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +39,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 // Define to use SWO trace
-//#define DEBUG_PRINT
+#define DEBUG_PRINT
 #define DISPLAY_WIDTH 320
 #define DISPLAY_HEIGHT 240
 #define WIDTH (DISPLAY_WIDTH)
@@ -63,8 +66,6 @@ TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN PV */
 uint32_t ambient_temp, oven_temp;	// Variables to store sensed temperatures
 
-
-
 enum states state = IDLE;
 
 // PID loop constants
@@ -84,19 +85,36 @@ uint8_t time_counter_enable;	// Start count: 1, stop count: 0
 uint16_t seconds_count;			// seconds counter, needed to control different reflow profile's phases
 uint8_t zero_crossing_count;	// Zero crossings counter, needed to control oven's output
 uint8_t oven_duty;				// Oven's "duty cycle": How many cycles will oven's element be enabled. Value between 0 and 100
-uint8_t soak_setpoint = 180;	// Set point temperature for soak phase
-uint8_t reflow_setpoint = 250;	// Set point temperature for reflow phase
-uint16_t soak_duration = 200;	// Soak phase duration
-uint16_t reflow_duration = 115;	// Reflow phase duration
+char profile_names[5][20];			// Profile names array
+uint8_t preheat_setpoints[5];		// Set point temperature array for soak phase
+uint8_t reflow_setpoints[5];	// Set point temperature array for reflow phase
+uint16_t preheat_durations[5];		// Soak phase duration array
+uint16_t reflow_durations[5];	// Reflow phase duration array
+uint8_t profile_number;			// Reflow profile index
 
 // Buffers for LVGL
 static uint8_t buf_1[BUFF_SIZE];
 static uint8_t buf_2[BUFF_SIZE];
 
 // Extern LVGL objects
+extern lv_obj_t* profile_label;
 extern lv_obj_t* phase_label;
 extern lv_obj_t* temp_label;
 extern lv_obj_t* time_label;
+
+// SD CARD related variable
+
+FATFS fs;
+FATFS *pfs;
+FIL fil;
+FRESULT fres;
+DWORD fre_clust;
+uint32_t totalSpace, freeSpace;
+char buffer[500];
+
+// LwJSON instance and tokens
+static lwjson_token_t tokens[20];
+static lwjson_t lwjson;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -115,6 +133,8 @@ void control_oven(int8_t oven_duty_cycle);
 void oven_task(uint16_t setpoint);
 void my_flush_cb(lv_display_t * display, const lv_area_t * area, uint8_t * px_map);
 void my_touchpad_read(lv_indev_t * indev_drv, lv_indev_data_t * data);
+void json_get_tokens(char *buf);
+void print_child_tokens(lwjson_token_t* t, int indent_depth);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -157,7 +177,29 @@ int main(void)
   MX_SPI3_Init();
   MX_TIM1_Init();
   MX_SPI1_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  /* Wait for SD module reset */
+    	HAL_Delay(500);
+
+  	if(f_mount(&fs, "", 0) != FR_OK)
+  		Error_Handler();
+
+  	/* Open file to read */
+  	if(f_open(&fil, "profiles.json", FA_READ) != FR_OK)
+  		Error_Handler();
+
+  	f_read(&fil, buffer, sizeof(buffer), NULL);
+
+  	/* Close file */
+  	if(f_close(&fil) != FR_OK)
+  		Error_Handler();
+
+  	/* Unmount SDCARD */
+  	if(f_mount(NULL, "", 1) != FR_OK)
+  		Error_Handler();
+
+  	json_get_tokens(buffer);
 
   // Initialize ILI9341 driver
   ILI9341_Init();
@@ -196,14 +238,14 @@ int main(void)
 		  break;
 	  case PREHEAT:
 		  time_counter_enable = 1;
-		  oven_task(soak_setpoint);
-		  if (seconds_count > soak_duration)
+		  oven_task(preheat_setpoints[profile_number]);
+		  if (seconds_count > preheat_durations[profile_number])
 			  state++;
 		  break;
 	  case REFLOW:
 		  lv_label_set_text(phase_label, "Phase: REFLOW");
-		  oven_task(reflow_setpoint);
-		  if (seconds_count > soak_duration + reflow_duration)
+		  oven_task(reflow_setpoints[profile_number]);
+		  if (seconds_count > preheat_durations[profile_number] + reflow_durations[profile_number])
 			  state++;
 		  break;
 	  case COOLDOWN:
@@ -409,7 +451,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -592,7 +634,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, DISP_CS_Pin|DISP_T_CS_Pin, GPIO_PIN_RESET);
@@ -657,13 +699,96 @@ int _write(int file, char *ptr, int len)
 }
 #endif
 
-/* RGB_LED_Color
- * @brief: Displays a color on the on-board RGB-LED
- *
- * @param: color value, can be any value in @RGB_LED_COLORS
- *
- * @return: None
- */
+void decode_profiles_json(lwjson_token_t* t)
+{
+	lwjson_token_t* profiles_tkn;	// Token variable to handle each profile in the JSON array
+	lwjson_token_t* preheat_tkn;	// Token variable to handle preheat's object elements
+	lwjson_token_t* reflow_tkn;		// Token variable to handle reflow's object elements
+	int profile_index = 0;			// JSON file holds an array of profiles, this index keeps track of each profile
+	for (const lwjson_token_t* tkn = lwjson_get_first_child(t); tkn != NULL; tkn = tkn->next) {
+
+		// Token "profile_name"
+		profiles_tkn = lwjson_get_first_child(tkn);
+		strncpy(profile_names[profile_index], profiles_tkn->u.str.token_value, profiles_tkn->u.str.token_value_len);
+
+		// Token "preheat_stage"
+		profiles_tkn = profiles_tkn->next;
+
+		// This is an object, so get its children
+		// Token "preheat_duration"
+		preheat_tkn = lwjson_get_first_child(profiles_tkn);
+		preheat_durations[profile_index] = preheat_tkn->u.num_int;
+
+		// Token "preheat_setpoint"
+		preheat_tkn = preheat_tkn->next;
+		preheat_setpoints[profile_index] = preheat_tkn->u.num_int;
+
+		// Token "reflow_stage"
+		profiles_tkn = profiles_tkn->next;
+
+		// This is an object, so get its children
+		// Token "reflow_duration"
+		reflow_tkn = lwjson_get_first_child(profiles_tkn);
+		reflow_durations[profile_index] = reflow_tkn->u.num_int;
+
+		// Token "reflow_setpoint"
+		reflow_tkn = reflow_tkn->next;
+		reflow_setpoints[profile_index] = reflow_tkn->u.num_int;
+
+		profile_index++;	// Increase index so next iteration of the for loop decodes the next profile in the array
+	}
+}
+
+void print_child_tokens(lwjson_token_t* t, int indent_depth)
+{
+    /* Now print all keys in the object */
+    for (const lwjson_token_t* tkn = lwjson_get_first_child(t); tkn != NULL; tkn = tkn->next) {
+    	for (int i = 0; i < indent_depth; i++)
+    		printf("\t");
+        printf("Token: %.*s,", (int)tkn->token_name_len, tkn->token_name);
+        if (tkn->type == LWJSON_TYPE_NUM_INT){
+        	int temp = (int)tkn->u.num_int;	// Collect token value in int format
+        	printf(" Value: %d\n", temp);
+        }
+        else if (tkn->type == LWJSON_TYPE_STRING){
+        	const char* str_val;
+        	str_val = tkn->u.str.token_value; // Collect token value in string format
+        	printf(" Value: %.*s\n", tkn->u.str.token_value_len, str_val);
+        }
+        else if (tkn->type == LWJSON_TYPE_ARRAY || tkn->type == LWJSON_TYPE_OBJECT) {
+            printf(" token is array or object, printing children:\n");
+            //print child tokens recursively
+            print_child_tokens(tkn, (indent_depth + 1));
+        }
+    }
+}
+
+void json_get_tokens(char *buf) {
+    /* Initialize and pass statically allocated tokens */
+    lwjson_init(&lwjson, tokens, LWJSON_ARRAYSIZE(tokens));
+
+    /* Try to parse input string */
+    if (lwjson_parse(&lwjson, buf) == lwjsonOK) {
+        lwjson_token_t* t;
+        printf("JSON parsed..\r\n");
+
+        /* Get very first token as top object */
+        t = lwjson_get_first_token(&lwjson);
+        if (t->type == LWJSON_TYPE_ARRAY) {
+            printf("JSON starts with array..\n");
+        } else if (t->type == LWJSON_TYPE_OBJECT) {
+            printf("JSON starts with object..\n");
+        } else {
+            printf("This should never happen..\n");
+        }
+
+        //print_child_tokens(t, 0);
+        decode_profiles_json(lwjson_get_first_child(t));
+
+        /* Call this when not used anymore */
+        lwjson_free(&lwjson);
+    }
+}
 
 uint8_t PID_Loop(uint16_t setpoint, float k_p, float k_i, float k_d)
 {
@@ -723,6 +848,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 
 void oven_task(uint16_t setpoint)
 {
+	  lv_label_set_text_fmt(profile_label, "Profile: %s", profile_names[profile_number]);
 	  if (zero_crossing_count >= oven_duty)
 	  {
 		  HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR

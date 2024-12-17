@@ -24,6 +24,7 @@ C_DEPS :=
 SUBDIRS := \
 Core/Src \
 Core/Startup \
+Drivers/SD \
 Drivers/STM32F4xx_HAL_Driver/Src \
 Drivers/lvgl/demos/benchmark/assets \
 Drivers/lvgl/demos/benchmark \
@@ -222,4 +223,9 @@ Drivers/lvgl/src/widgets/tileview \
 Drivers/lvgl/src/widgets/win \
 Drivers/tft \
 Drivers/touchpad \
+FATFS/App \
+FATFS/Target \
+Middlewares/Third_Party/FatFs/src \
+Middlewares/Third_Party/FatFs/src/option \
+lwjson/src/lwjson \
 

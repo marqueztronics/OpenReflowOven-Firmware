@@ -9,6 +9,11 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
+-include lwjson/src/lwjson/subdir.mk
+-include Middlewares/Third_Party/FatFs/src/option/subdir.mk
+-include Middlewares/Third_Party/FatFs/src/subdir.mk
+-include FATFS/Target/subdir.mk
+-include FATFS/App/subdir.mk
 -include Drivers/touchpad/subdir.mk
 -include Drivers/tft/subdir.mk
 -include Drivers/lvgl/src/widgets/win/subdir.mk
@@ -207,6 +212,7 @@ RM := rm -rf
 -include Drivers/lvgl/demos/benchmark/subdir.mk
 -include Drivers/lvgl/demos/subdir.mk
 -include Drivers/STM32F4xx_HAL_Driver/Src/subdir.mk
+-include Drivers/SD/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk

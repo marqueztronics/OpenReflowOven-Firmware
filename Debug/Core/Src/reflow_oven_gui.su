@@ -2,8 +2,8 @@
 ../Core/Inc/../../Drivers/lvgl/src/core/lv_obj_style.h:248:20:lv_obj_set_style_pad_hor	24	static
 ../Core/Inc/../../Drivers/lvgl/src/core/lv_obj_style.h:254:20:lv_obj_set_style_pad_ver	24	static
 ../Core/Inc/../../Drivers/lvgl/src/core/lv_obj_style.h:286:20:lv_obj_set_style_size	24	static
-../Core/Src/reflow_oven_gui.c:23:6:reflow_oven_ui	128	static
-../Core/Src/reflow_oven_gui.c:208:6:start_event_handler	24	static
-../Core/Src/reflow_oven_gui.c:218:6:stop_event_handler	24	static
-../Core/Src/reflow_oven_gui.c:229:6:load_scr_event_handler	24	static
-../Core/Src/reflow_oven_gui.c:238:6:update_chart	16	static
+../Core/Src/reflow_oven_gui.c:24:6:reflow_oven_ui	128	static
+../Core/Src/reflow_oven_gui.c:209:6:start_event_handler	24	static
+../Core/Src/reflow_oven_gui.c:219:6:stop_event_handler	24	static
+../Core/Src/reflow_oven_gui.c:230:6:load_scr_event_handler	24	static
+../Core/Src/reflow_oven_gui.c:239:6:update_chart	16	static
