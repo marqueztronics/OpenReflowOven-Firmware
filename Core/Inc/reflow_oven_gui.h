@@ -20,6 +20,9 @@ void start_event_handler(lv_event_t* e);
 void stop_event_handler(lv_event_t* e);
 void load_scr_event_handler(lv_event_t* e);
 void update_chart(uint32_t x_value, uint32_t y_value);
+void previous_profile_event_handler(lv_event_t* e);
+void next_profile_event_handler(lv_event_t* e);
+void select_profile_event_handler(lv_event_t* e);
 
 #ifdef __cplusplus
 } /*extern "C"*/

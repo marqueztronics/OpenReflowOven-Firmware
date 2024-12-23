@@ -87,10 +87,11 @@ uint8_t zero_crossing_count;	// Zero crossings counter, needed to control oven's
 uint8_t oven_duty;				// Oven's "duty cycle": How many cycles will oven's element be enabled. Value between 0 and 100
 char profile_names[5][20];			// Profile names array
 uint8_t preheat_setpoints[5];		// Set point temperature array for soak phase
-uint8_t reflow_setpoints[5];	// Set point temperature array for reflow phase
+uint16_t reflow_setpoints[5];	// Set point temperature array for reflow phase
 uint16_t preheat_durations[5];		// Soak phase duration array
 uint16_t reflow_durations[5];	// Reflow phase duration array
 uint8_t profile_number;			// Reflow profile index
+uint8_t total_profiles;			// Holds the total of profiles decoded in JSON
 
 // Buffers for LVGL
 static uint8_t buf_1[BUFF_SIZE];
@@ -246,16 +247,18 @@ int main(void)
 		  lv_label_set_text(phase_label, "Phase: REFLOW");
 		  oven_task(reflow_setpoints[profile_number]);
 		  if (seconds_count > preheat_durations[profile_number] + reflow_durations[profile_number])
-			  state++;
-		  break;
-	  case COOLDOWN:
-		  lv_label_set_text(phase_label, "Phase: COOLDOWN");
-		  if (oven_temp <= 50)
 		  {
 			  // Beep sound for 1 sec
 			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 			  HAL_Delay(1000);
 			  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+			  state++;
+		  }
+		  break;
+	  case COOLDOWN:
+		  lv_label_set_text(phase_label, "Phase: COOLDOWN");
+		  if (oven_temp <= 50)
+		  {
 			  state = IDLE;
 			  time_counter_enable = 0;
 		  }
@@ -699,7 +702,7 @@ int _write(int file, char *ptr, int len)
 }
 #endif
 
-void decode_profiles_json(lwjson_token_t* t)
+uint8_t decode_profiles_json(lwjson_token_t* t)
 {
 	lwjson_token_t* profiles_tkn;	// Token variable to handle each profile in the JSON array
 	lwjson_token_t* preheat_tkn;	// Token variable to handle preheat's object elements
@@ -737,6 +740,8 @@ void decode_profiles_json(lwjson_token_t* t)
 
 		profile_index++;	// Increase index so next iteration of the for loop decodes the next profile in the array
 	}
+
+	return profile_index;	// Return the number of reflow profiles decoded from JSON
 }
 
 void print_child_tokens(lwjson_token_t* t, int indent_depth)
@@ -783,7 +788,7 @@ void json_get_tokens(char *buf) {
         }
 
         //print_child_tokens(t, 0);
-        decode_profiles_json(lwjson_get_first_child(t));
+        total_profiles = decode_profiles_json(lwjson_get_first_child(t));
 
         /* Call this when not used anymore */
         lwjson_free(&lwjson);
