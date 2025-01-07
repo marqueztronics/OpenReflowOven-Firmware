@@ -38,8 +38,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-// Define to use SWO trace
-#define DEBUG_PRINT
+//#define DEBUG_PRINT	/* Define to use SWO trace */
 #define DISPLAY_WIDTH 320
 #define DISPLAY_HEIGHT 240
 #define WIDTH (DISPLAY_WIDTH)
@@ -232,12 +231,14 @@ int main(void)
 	  switch(state)
 	  {
 	  case IDLE:
+		  lv_label_set_text(phase_label, "Phase: IDLE");
 		  HAL_GPIO_WritePin(SSR_GPIO_Port, SSR_Pin, GPIO_PIN_RESET);	// Turn off SSR
 		  seconds_count = 0;
 		  integral = 0;
 		  oven_task(0);
 		  break;
 	  case PREHEAT:
+		  lv_label_set_text(phase_label, "Phase: PREHEAT");
 		  time_counter_enable = 1;
 		  oven_task(preheat_setpoints[profile_number]);
 		  if (seconds_count > preheat_durations[profile_number])
@@ -250,14 +251,14 @@ int main(void)
 		  {
 			  // Beep sound for 1 sec
 			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-			  HAL_Delay(1000);
+			  lv_delay_ms(1000);
 			  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 			  state++;
 		  }
 		  break;
 	  case COOLDOWN:
 		  lv_label_set_text(phase_label, "Phase: COOLDOWN");
-		  if (oven_temp <= 50)
+		  if (oven_temp <= 50 || seconds_count >= 480)
 		  {
 			  state = IDLE;
 			  time_counter_enable = 0;
@@ -566,9 +567,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 16-1;
+  htim1.Init.Prescaler = 180-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 210;
+  htim1.Init.Period = 208;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -592,7 +593,7 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 105;
+  sConfigOC.Pulse = 104;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;

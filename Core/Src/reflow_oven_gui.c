@@ -8,6 +8,7 @@
 #include "reflow_oven_gui.h"
 #include "stm32f4xx_hal.h"
 
+extern TIM_HandleTypeDef htim1;
 extern enum states state;
 extern char profile_names[5][20];
 extern uint16_t preheat_durations[5];
@@ -142,7 +143,7 @@ void reflow_oven_ui(void)
     /*horizontal scale*/
     lv_obj_t* scale_bottom = lv_scale_create(screen_reflow);
     lv_scale_set_mode(scale_bottom, LV_SCALE_MODE_HORIZONTAL_BOTTOM);
-    lv_obj_set_size(scale_bottom, 180, 25);
+    lv_obj_set_size(scale_bottom, 205, 25);
     lv_obj_align_to(scale_bottom, chart, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
     lv_scale_set_range(scale_bottom, 0, 480);
     lv_scale_set_total_tick_count(scale_bottom, 7);
@@ -440,7 +441,7 @@ void start_event_handler(lv_event_t* e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t* usr_data_screen = lv_event_get_user_data(e);
     if (code == LV_EVENT_CLICKED) {
-    	lv_label_set_text_fmt(profile_name_label, "Profile: %s", profile_names[profile_number]);
+    	lv_label_set_text_fmt(profile_label, "Profile: %s", profile_names[profile_number]);
         lv_scr_load(usr_data_screen);
         state = PREHEAT;	// change state machine to pre-heat so reflow starts
     }
@@ -469,7 +470,7 @@ void load_scr_event_handler(lv_event_t* e)
 void update_chart(uint32_t x_value, uint32_t y_value)
 {
     /*Set the next points on 'ser1'*/
-    lv_chart_set_next_value2(chart, ser1,x_value, y_value);
+    lv_chart_set_next_value2(chart, ser1, x_value, y_value);
 }
 
 void previous_profile_event_handler(lv_event_t* e)
